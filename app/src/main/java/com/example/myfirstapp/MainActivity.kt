@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Label
@@ -112,51 +113,142 @@ class MainActivity : ComponentActivity() {
                 }
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // Display the list of tasks
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                ) {
-                    items(taskList.size) { index ->
-                        val task = taskList[index]
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 8.dp),
-                            contentAlignment = Alignment.CenterStart
-                        ) {
-                            Checkbox(
-                                checked = task.isCompleted,
-                                onCheckedChange = { isChecked ->
-                                    taskList[index] = task.copy(isCompleted = isChecked)
-                                    saveTasks(taskList, nextId)
-                                },
-                                modifier = Modifier.padding(end = 8.dp)
-                            )
-                            Text(
-                                text = task.text,
-                                color = Color.White,
-                                fontSize = 18.sp,
-                                textDecoration = if (task.isCompleted) TextDecoration.LineThrough else TextDecoration.None,
-                                modifier = Modifier.padding(start = 48.dp)
-                            )
-                            IconButton(
-                                onClick = {
-                                    taskList.removeAt(index)
-                                    saveTasks(taskList, nextId)
-                                },
-                                modifier = Modifier.align(Alignment.CenterEnd)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Delete,
-                                    contentDescription = "Delete task",
-                                    tint = Color.White
-                                )
-                            }
-                        }
-                    }
-                }
+	                // Display the list of tasks
+	                val incompleteTasks = taskList.filter { !it.isCompleted }
+	                val completedTasks = taskList.filter { it.isCompleted }
+
+	                LazyColumn(
+	                    modifier = Modifier
+	                        .fillMaxWidth()
+	                        .padding(horizontal = 16.dp)
+	                ) {
+	                    // Incomplete tasks (above the line)
+	                    items(incompleteTasks, key = { it.id }) { task ->
+	                        Box(
+	                            modifier = Modifier
+	                                .fillMaxWidth()
+	                                .padding(vertical = 8.dp),
+	                            contentAlignment = Alignment.CenterStart
+	                        ) {
+	                            Checkbox(
+	                                checked = task.isCompleted,
+	                                onCheckedChange = { isChecked ->
+	                                    val currentIndex = taskList.indexOfFirst { it.id == task.id }
+	                                    if (currentIndex != -1) {
+	                                        val updatedTask = task.copy(isCompleted = isChecked)
+	                                        taskList.removeAt(currentIndex)
+	                                        if (isChecked) {
+	                                            // Move to top of completed section (below the line)
+	                                            val firstCompletedIndex = taskList.indexOfFirst { it.isCompleted }
+	                                            if (firstCompletedIndex == -1) {
+	                                                taskList.add(updatedTask)
+	                                            } else {
+	                                                taskList.add(firstCompletedIndex, updatedTask)
+	                                            }
+	                                        } else {
+	                                            // Move to top of incomplete section (above the line)
+	                                            taskList.add(0, updatedTask)
+	                                        }
+	                                        saveTasks(taskList, nextId)
+	                                    }
+	                                },
+	                                modifier = Modifier.padding(end = 8.dp)
+	                            )
+	                            Text(
+	                                text = task.text,
+	                                color = Color.White,
+	                                fontSize = 18.sp,
+	                                textDecoration = if (task.isCompleted) TextDecoration.LineThrough else TextDecoration.None,
+	                                modifier = Modifier.padding(start = 48.dp)
+	                            )
+	                            IconButton(
+	                                onClick = {
+	                                    val currentIndex = taskList.indexOfFirst { it.id == task.id }
+	                                    if (currentIndex != -1) {
+	                                        taskList.removeAt(currentIndex)
+	                                        saveTasks(taskList, nextId)
+	                                    }
+	                                },
+	                                modifier = Modifier.align(Alignment.CenterEnd)
+	                            ) {
+	                                Icon(
+	                                    imageVector = Icons.Filled.Delete,
+	                                    contentDescription = "Delete task",
+	                                    tint = Color.White
+	                                )
+	                            }
+	                        }
+	                    }
+
+	                    // Horizontal line between incomplete and completed tasks
+	                    item {
+	                        Divider(
+	                            color = Color.Gray,
+	                            thickness = 1.dp,
+	                            modifier = Modifier
+	                                .fillMaxWidth()
+	                                .padding(vertical = 8.dp)
+	                        )
+	                    }
+
+	                    // Completed tasks (below the line)
+	                    items(completedTasks, key = { it.id }) { task ->
+	                        Box(
+	                            modifier = Modifier
+	                                .fillMaxWidth()
+	                                .padding(vertical = 8.dp),
+	                            contentAlignment = Alignment.CenterStart
+	                        ) {
+	                            Checkbox(
+	                                checked = task.isCompleted,
+	                                onCheckedChange = { isChecked ->
+	                                    val currentIndex = taskList.indexOfFirst { it.id == task.id }
+	                                    if (currentIndex != -1) {
+	                                        val updatedTask = task.copy(isCompleted = isChecked)
+	                                        taskList.removeAt(currentIndex)
+	                                        if (isChecked) {
+	                                            // Move to top of completed section (below the line)
+	                                            val firstCompletedIndex = taskList.indexOfFirst { it.isCompleted }
+	                                            if (firstCompletedIndex == -1) {
+	                                                taskList.add(updatedTask)
+	                                            } else {
+	                                                taskList.add(firstCompletedIndex, updatedTask)
+	                                            }
+	                                        } else {
+	                                            // Move to top of incomplete section (above the line)
+	                                            taskList.add(0, updatedTask)
+	                                        }
+	                                        saveTasks(taskList, nextId)
+	                                    }
+	                                },
+	                                modifier = Modifier.padding(end = 8.dp)
+	                            )
+	                            Text(
+	                                text = task.text,
+	                                color = Color.White,
+	                                fontSize = 18.sp,
+	                                textDecoration = if (task.isCompleted) TextDecoration.LineThrough else TextDecoration.None,
+	                                modifier = Modifier.padding(start = 48.dp)
+	                            )
+	                            IconButton(
+	                                onClick = {
+	                                    val currentIndex = taskList.indexOfFirst { it.id == task.id }
+	                                    if (currentIndex != -1) {
+	                                        taskList.removeAt(currentIndex)
+	                                        saveTasks(taskList, nextId)
+	                                    }
+	                                },
+	                                modifier = Modifier.align(Alignment.CenterEnd)
+	                            ) {
+	                                Icon(
+	                                    imageVector = Icons.Filled.Delete,
+	                                    contentDescription = "Delete task",
+	                                    tint = Color.White
+	                                )
+	                            }
+	                        }
+	                    }
+	                }
             }
         }
 
