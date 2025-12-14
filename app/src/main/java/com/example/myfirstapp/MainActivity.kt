@@ -25,6 +25,7 @@ import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -138,9 +139,15 @@ class MainActivity : ComponentActivity() {
                 OutlinedTextField(
                     value = newTask,
                     onValueChange = { newTask = it },
-                    label = { Text(text = "Enter a task") },
+                    label = { Text(text = "Enter a task", color = Color.White) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        cursorColor = Color.White,
+                        focusedBorderColor = Color.White,
+                        unfocusedBorderColor = Color.Gray
+                    ),
                     modifier = Modifier.padding(horizontal = 16.dp)
-
                 )
                 Spacer(modifier = Modifier.height(10.dp))
                 Button(
