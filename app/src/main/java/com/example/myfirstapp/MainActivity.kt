@@ -128,21 +128,22 @@ class MainActivity : ComponentActivity() {
 
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                Spacer(modifier = Modifier.height(20.dp))
                 Text(
-                    text = "ToDo List",
+                    text = "Task List",
                     color = Color.White,
                     fontSize = 32.sp,
                     fontFamily = FontFamily.SansSerif,
                     modifier = Modifier.padding(top = 40.dp)
                 )
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(15.dp))
                 OutlinedTextField(
                     value = newTask,
                     onValueChange = { newTask = it },
-                    label = { Text(text = "Enter a task", color = Color.White) },
+                    label = { Text(text = "Enter a task", color = Color.Gray) },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
+                        unfocusedTextColor = Color.Gray,
                         cursorColor = Color.White,
                         focusedBorderColor = Color.White,
                         unfocusedBorderColor = Color.Gray
