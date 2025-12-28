@@ -1,4 +1,4 @@
-# MyFirstApp
+# My  ToDo List App
 
 A simple task list Android application built with Kotlin and Jetpack Compose.
 
