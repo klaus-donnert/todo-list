@@ -447,7 +447,6 @@ class MainActivity : ComponentActivity() {
                                             onValueChange = { editedText = it },
                                             modifier = Modifier.weight(1f),
                                             singleLine = true,
-                                            // Removed: textDecoration = TextDecoration.LineThrough, <- This was the problematic line
                                             colors = OutlinedTextFieldDefaults.colors(
                                                 focusedTextColor = Color.White,
                                                 unfocusedTextColor = Color.Gray,
@@ -509,7 +508,7 @@ class MainActivity : ComponentActivity() {
                 // Plus button at TopEnd
                 IconButton(
                     onClick = { showAddTaskInput = true },
-                    modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
+                    modifier = Modifier.align(Alignment.TopEnd).padding(top = 55.dp, end = 60.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Add,
