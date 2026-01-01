@@ -3,6 +3,11 @@ package com.example.myfirstapp // Make sure this matches your folder structure!
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -28,10 +33,12 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -40,8 +47,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextDecoration
@@ -54,6 +59,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Check
+import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
@@ -126,6 +132,40 @@ class MainActivity : ComponentActivity() {
             var showAddTaskInput by remember { mutableStateOf(false) }
             var editingTaskId by remember { mutableStateOf<Int?>(null) }
 
+            // Animation state: tracks tasks that are animating out (being checked/unchecked)
+            // Maps task ID to the new isCompleted state it's transitioning to
+            val animatingTasks = remember { mutableStateListOf<Pair<Int, Boolean>>() }
+
+            // Helper function to handle checkbox change with animation
+            fun handleCheckboxChange(task: Task, isChecked: Boolean) {
+                // Start the animation
+                animatingTasks.add(Pair(task.id, isChecked))
+            }
+
+            // Process animations - when animation completes, update the task list
+            animatingTasks.toList().forEach { (taskId, newIsCompleted) ->
+                LaunchedEffect(taskId) {
+                    delay(300) // Wait for animation to complete
+                    val currentIndex = taskList.indexOfFirst { it.id == taskId }
+                    if (currentIndex != -1) {
+                        val task = taskList[currentIndex]
+                        val updatedTask = task.copy(isCompleted = newIsCompleted)
+                        taskList.removeAt(currentIndex)
+                        if (newIsCompleted) {
+                            val firstCompletedIndex = taskList.indexOfFirst { it.isCompleted }
+                            if (firstCompletedIndex == -1) {
+                                taskList.add(updatedTask)
+                            } else {
+                                taskList.add(firstCompletedIndex, updatedTask)
+                            }
+                        } else {
+                            taskList.add(0, updatedTask)
+                        }
+                        saveTasks(taskList, nextId)
+                    }
+                    animatingTasks.removeAll { it.first == taskId }
+                }
+            }
 
             Box(modifier = Modifier.fillMaxSize()) {
                 Column(
@@ -199,10 +239,14 @@ class MainActivity : ComponentActivity() {
                     // Drag state
                     var draggedTaskId by remember { mutableStateOf<Int?>(null) }
                     var dragOffsetY by remember { mutableFloatStateOf(0f) }
-                    var draggedItemInitialY by remember { mutableFloatStateOf(0f) }
-                    val itemPositions = remember { mutableMapOf<Int, Float>() }
+                    var dragStartIndex by remember { mutableIntStateOf(-1) }
+                    var currentHoverIndex by remember { mutableIntStateOf(-1) }
                     val itemHeight = 56.dp
                     val itemHeightPx = with(LocalDensity.current) { itemHeight.toPx() }
+
+                    // Create a version counter that changes when the list is reordered
+                    // This forces pointerInput to be recreated with fresh state
+                    val listVersion = remember(incompleteTasks.map { it.id }.hashCode()) { System.currentTimeMillis() }
 
                     LazyColumn(
                         modifier = Modifier
@@ -212,184 +256,204 @@ class MainActivity : ComponentActivity() {
                         // Incomplete tasks (above the line) with drag-and-drop
                         itemsIndexed(incompleteTasks, key = { _, task -> task.id }) { index, task ->
                             val isDragging = draggedTaskId == task.id
+                            val isAnimatingOut = animatingTasks.any { it.first == task.id }
 
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(itemHeight)
-                                    .onGloballyPositioned { coordinates ->
-                                        itemPositions[task.id] = coordinates.positionInParent().y
-                                    }
-                                    .zIndex(if (isDragging) 1f else 0f)
-                                    .graphicsLayer {
-                                        if (isDragging) {
-                                            translationY = dragOffsetY
-                                            shadowElevation = 8f
-                                        } else if (draggedTaskId != null) {
-                                            // Animate other items when something is being dragged
-                                            val draggedIndex = incompleteTasks.indexOfFirst { it.id == draggedTaskId }
-                                            if (draggedIndex != -1) {
-                                                val draggedCurrentY = draggedItemInitialY + dragOffsetY
-                                                val myY = itemPositions[task.id] ?: 0f
+                            // Capture current values for use in pointerInput
+                            val currentIncompleteTasksSize = incompleteTasks.size
 
-                                                // Calculate if we should shift
-                                                if (index < draggedIndex && draggedCurrentY < myY + itemHeightPx / 2) {
-                                                    translationY = itemHeightPx
-                                                } else if (index > draggedIndex && draggedCurrentY > myY - itemHeightPx / 2) {
-                                                    translationY = -itemHeightPx
-                                                }
-                                            }
-                                        }
-                                    }
-                                    .background(if (isDragging) Color.DarkGray else Color.Black),
-                                contentAlignment = Alignment.CenterStart
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
+                            // Calculate visual offset for non-dragged items using animateFloatAsState for smooth transitions
+                            val targetOffset = if (!isDragging && draggedTaskId != null && dragStartIndex >= 0 && currentHoverIndex >= 0) {
+                                when {
+                                    // Dragging down: items between start and hover move up
+                                    dragStartIndex < currentHoverIndex && index > dragStartIndex && index <= currentHoverIndex -> -itemHeightPx
+                                    // Dragging up: items between hover and start move down
+                                    dragStartIndex > currentHoverIndex && index >= currentHoverIndex && index < dragStartIndex -> itemHeightPx
+                                    else -> 0f
+                                }
+                            } else 0f
+
+                            val animatedOffset by animateFloatAsState(
+                                targetValue = targetOffset,
+                                animationSpec = tween(150),
+                                label = "offsetAnimation"
+                            )
+
+                            // Only use AnimatedVisibility for checkbox animations, not during drag
+                            if (isAnimatingOut) {
+                                androidx.compose.animation.AnimatedVisibility(
+                                    visible = false,
+                                    exit = slideOutVertically(
+                                        animationSpec = tween(300),
+                                        targetOffsetY = { fullHeight -> fullHeight }
+                                    ) + fadeOut(animationSpec = tween(300))
                                 ) {
-                                    Checkbox(
-                                        checked = task.isCompleted,
-                                        onCheckedChange = { isChecked ->
-                                            val currentIndex = taskList.indexOfFirst { it.id == task.id }
-                                            if (currentIndex != -1) {
-                                                val updatedTask = task.copy(isCompleted = isChecked)
-                                                taskList.removeAt(currentIndex)
-                                                if (isChecked) {
-                                                    val firstCompletedIndex = taskList.indexOfFirst { it.isCompleted }
-                                                    if (firstCompletedIndex == -1) {
-                                                        taskList.add(updatedTask)
-                                                    } else {
-                                                        taskList.add(firstCompletedIndex, updatedTask)
-                                                    }
-                                                } else {
-                                                    taskList.add(0, updatedTask)
-                                                }
-                                                saveTasks(taskList, nextId)
+                                    Box(modifier = Modifier.fillMaxWidth().height(itemHeight))
+                                }
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .zIndex(if (isDragging) 100f else 0f)
+                                        .fillMaxWidth()
+                                        .height(itemHeight)
+                                        .graphicsLayer {
+                                            if (isDragging) {
+                                                translationY = dragOffsetY
+                                                shadowElevation = 16f
+                                            } else {
+                                                translationY = animatedOffset
                                             }
                                         }
-                                    )
+                                        .background(if (isDragging) Color.DarkGray else Color.Black),
+                                    contentAlignment = Alignment.CenterStart
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Checkbox(
+                                            checked = task.isCompleted,
+                                            onCheckedChange = { isChecked ->
+                                                handleCheckboxChange(task, isChecked)
+                                            }
+                                        )
 
-                                    // Drag handle
-                                    Box(
-                                        modifier = Modifier
-                                            .padding(horizontal = 8.dp)
-                                            .pointerInput(task.id) {
-                                                detectDragGesturesAfterLongPress(
-                                                    onDragStart = {
-                                                        draggedTaskId = task.id
-                                                        draggedItemInitialY = itemPositions[task.id] ?: 0f
-                                                        dragOffsetY = 0f
-                                                    },
-                                                    onDrag = { change, dragAmount ->
-                                                        change.consume()
-                                                        dragOffsetY += dragAmount.y
-                                                    },
-                                                    onDragEnd = {
-                                                        // Calculate new position
-                                                        val draggedIdx = incompleteTasks.indexOfFirst { it.id == draggedTaskId }
-                                                        if (draggedIdx != -1) {
-                                                            val draggedCurrentY = draggedItemInitialY + dragOffsetY
-                                                            var newIdx = draggedIdx
+                                        // Drag handle
+                                        Box(
+                                            modifier = Modifier
+                                                .padding(horizontal = 8.dp)
+                                                .pointerInput(task.id, listVersion) {
+                                                    detectDragGesturesAfterLongPress(
+                                                        onDragStart = {
+                                                            // Use the index parameter directly - it's current at drag start
+                                                            draggedTaskId = task.id
+                                                            dragStartIndex = index
+                                                            currentHoverIndex = index
+                                                            dragOffsetY = 0f
+                                                        },
+                                                        onDrag = { change, dragAmount ->
+                                                            change.consume()
+                                                            dragOffsetY += dragAmount.y
+                                                            val rawNewIndex = dragStartIndex + (dragOffsetY / itemHeightPx).toInt()
+                                                            currentHoverIndex = rawNewIndex.coerceIn(0, currentIncompleteTasksSize - 1)
+                                                        },
+                                                        onDragEnd = {
+                                                            val draggedId = draggedTaskId
+                                                            if (draggedId != null && dragStartIndex >= 0 && currentHoverIndex >= 0 && currentHoverIndex != dragStartIndex) {
+                                                                // Get current incomplete tasks snapshot
+                                                                val currentIncompleteTasks = taskList.filter { !it.isCompleted }
 
-                                                            for (i in incompleteTasks.indices) {
-                                                                if (i == draggedIdx) continue
-                                                                val itemY = itemPositions[incompleteTasks[i].id] ?: continue
+                                                                // Find the task being dragged
+                                                                val taskToMove = taskList.firstOrNull { it.id == draggedId }
+                                                                if (taskToMove != null && currentHoverIndex < currentIncompleteTasks.size) {
+                                                                    // Remove from current position
+                                                                    val fromIdx = taskList.indexOfFirst { it.id == draggedId }
+                                                                    if (fromIdx >= 0) {
+                                                                        taskList.removeAt(fromIdx)
 
-                                                                if (i < draggedIdx && draggedCurrentY < itemY + itemHeightPx / 2) {
-                                                                    newIdx = minOf(newIdx, i)
-                                                                } else if (i > draggedIdx && draggedCurrentY > itemY - itemHeightPx / 2) {
-                                                                    newIdx = maxOf(newIdx, i)
+                                                                        // Calculate new position in taskList
+                                                                        // Get the task that will be at the target position after removal
+                                                                        val remainingIncompleteTasks = taskList.filter { !it.isCompleted }
+                                                                        val targetIdx = if (currentHoverIndex >= remainingIncompleteTasks.size) {
+                                                                            // Insert at end of incomplete tasks
+                                                                            val lastIncomplete = remainingIncompleteTasks.lastOrNull()
+                                                                            if (lastIncomplete != null) {
+                                                                                taskList.indexOfFirst { it.id == lastIncomplete.id } + 1
+                                                                            } else {
+                                                                                0
+                                                                            }
+                                                                        } else if (currentHoverIndex == 0) {
+                                                                            // Insert at beginning
+                                                                            0
+                                                                        } else {
+                                                                            // Insert at the position of the task currently at hover index
+                                                                            val taskAtHover = remainingIncompleteTasks[currentHoverIndex]
+                                                                            taskList.indexOfFirst { it.id == taskAtHover.id }
+                                                                        }
+
+                                                                        taskList.add(targetIdx.coerceIn(0, taskList.size), taskToMove)
+                                                                        saveTasks(taskList, nextId)
+                                                                    }
                                                                 }
                                                             }
-
-                                                            if (newIdx != draggedIdx) {
-                                                                val taskToMove = taskList.first { it.id == draggedTaskId }
-                                                                val fromIdx = taskList.indexOfFirst { it.id == draggedTaskId }
-                                                                taskList.removeAt(fromIdx)
-
-                                                                // Find the actual position in taskList
-                                                                val targetTask = incompleteTasks[newIdx]
-                                                                var toIdx = taskList.indexOfFirst { it.id == targetTask.id }
-                                                                if (newIdx > draggedIdx) toIdx++
-                                                                taskList.add(toIdx.coerceIn(0, taskList.size), taskToMove)
-                                                                saveTasks(taskList, nextId)
-                                                            }
+                                                            draggedTaskId = null
+                                                            dragOffsetY = 0f
+                                                            dragStartIndex = -1
+                                                            currentHoverIndex = -1
+                                                        },
+                                                        onDragCancel = {
+                                                            draggedTaskId = null
+                                                            dragOffsetY = 0f
+                                                            dragStartIndex = -1
+                                                            currentHoverIndex = -1
                                                         }
-                                                        draggedTaskId = null
-                                                        dragOffsetY = 0f
-                                                    },
-                                                    onDragCancel = {
-                                                        draggedTaskId = null
-                                                        dragOffsetY = 0f
-                                                    }
+                                                    )
+                                                }
+                                        ) {
+                                            DragHandleIcon(color = Color.Gray)
+                                        }
+
+                                        Spacer(modifier = Modifier.width(8.dp))
+
+                                        if (editingTaskId == task.id) {
+                                            var editedText by remember { mutableStateOf(task.text) }
+                                            OutlinedTextField(
+                                                value = editedText,
+                                                onValueChange = { editedText = it },
+                                                modifier = Modifier.weight(1f),
+                                                singleLine = true,
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedTextColor = Color.White,
+                                                    unfocusedTextColor = Color.Gray,
+                                                    cursorColor = Color.White,
+                                                    focusedBorderColor = Color.White,
+                                                    unfocusedBorderColor = Color.Gray
+                                                )
+                                            )
+                                            IconButton(onClick = {
+                                                val idx = taskList.indexOfFirst { it.id == task.id }
+                                                if (idx != -1) {
+                                                    taskList[idx] = taskList[idx].copy(text = editedText)
+                                                    saveTasks(taskList, nextId)
+                                                    editingTaskId = null
+                                                }
+                                            }) {
+                                                Icon(imageVector = Icons.Filled.Check, contentDescription = "Save edit", tint = Color.White)
+                                            }
+                                        } else {
+                                            Text(
+                                                text = task.text,
+                                                color = Color.White,
+                                                fontSize = 18.sp,
+                                                modifier = Modifier.weight(1f)
+                                            )
+
+                                            IconButton(onClick = { editingTaskId = task.id }) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Edit,
+                                                    contentDescription = "Edit task",
+                                                    tint = Color.White
                                                 )
                                             }
-                                    ) {
-                                        DragHandleIcon(color = Color.Gray)
-                                    }
-
-                                    Spacer(modifier = Modifier.width(8.dp))
-
-                                    if (editingTaskId == task.id) {
-                                        var editedText by remember { mutableStateOf(task.text) }
-                                        OutlinedTextField(
-                                            value = editedText,
-                                            onValueChange = { editedText = it },
-                                            modifier = Modifier.weight(1f),
-                                            singleLine = true,
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedTextColor = Color.White,
-                                                unfocusedTextColor = Color.Gray,
-                                                cursorColor = Color.White,
-                                                focusedBorderColor = Color.White,
-                                                unfocusedBorderColor = Color.Gray
-                                            )
-                                        )
-                                        IconButton(onClick = {
-                                            val index = taskList.indexOfFirst { it.id == task.id }
-                                            if (index != -1) {
-                                                taskList[index] = taskList[index].copy(text = editedText)
-                                                saveTasks(taskList, nextId)
-                                                editingTaskId = null // Exit edit mode
-                                            }
-                                        }) {
-                                            Icon(imageVector = Icons.Filled.Check, contentDescription = "Save edit", tint = Color.White)
                                         }
-                                    } else {
-                                        Text(
-                                            text = task.text,
-                                            color = Color.White,
-                                            fontSize = 18.sp,
-                                            modifier = Modifier.weight(1f)
-                                        )
 
-                                        IconButton(onClick = { editingTaskId = task.id }) {
+                                        IconButton(
+                                            onClick = {
+                                                val currentIndex = taskList.indexOfFirst { it.id == task.id }
+                                                if (currentIndex != -1) {
+                                                    taskList.removeAt(currentIndex)
+                                                    saveTasks(taskList, nextId)
+                                                }
+                                            }
+                                        ) {
                                             Icon(
-                                                imageVector = Icons.Filled.Edit,
-                                                contentDescription = "Edit task",
+                                                imageVector = Icons.Filled.Delete,
+                                                contentDescription = "Delete task",
                                                 tint = Color.White
                                             )
                                         }
                                     }
-
-                                    IconButton(
-                                        onClick = {
-                                            val currentIndex = taskList.indexOfFirst { it.id == task.id }
-                                            if (currentIndex != -1) {
-                                                taskList.removeAt(currentIndex)
-                                                saveTasks(taskList, nextId)
-                                            }
-                                        }
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Delete,
-                                            contentDescription = "Delete task",
-                                            tint = Color.White
-                                        )
-                                    }
                                 }
-                            }
+                            } // end else block
                         }
 
                         // Horizontal line between incomplete and completed tasks
@@ -405,99 +469,93 @@ class MainActivity : ComponentActivity() {
 
                         // Completed tasks (below the line) - no drag handle
                         items(completedTasks, key = { it.id }) { task ->
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(itemHeight),
-                                contentAlignment = Alignment.CenterStart
+                            val isAnimatingOut = animatingTasks.any { it.first == task.id }
+
+                            AnimatedVisibility(
+                                visible = !isAnimatingOut,
+                                exit = slideOutVertically(
+                                    animationSpec = tween(300),
+                                    targetOffsetY = { fullHeight -> -fullHeight } // Slide up when unchecking
+                                ) + fadeOut(animationSpec = tween(300))
                             ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(itemHeight),
+                                    contentAlignment = Alignment.CenterStart
                                 ) {
-                                    Checkbox(
-                                        checked = task.isCompleted,
-                                        onCheckedChange = { isChecked ->
-                                            val currentIndex = taskList.indexOfFirst { it.id == task.id }
-                                            if (currentIndex != -1) {
-                                                val updatedTask = task.copy(isCompleted = isChecked)
-                                                taskList.removeAt(currentIndex)
-                                                if (isChecked) {
-                                                    val firstCompletedIndex = taskList.indexOfFirst { it.isCompleted }
-                                                    if (firstCompletedIndex == -1) {
-                                                        taskList.add(updatedTask)
-                                                    } else {
-                                                        taskList.add(firstCompletedIndex, updatedTask)
-                                                    }
-                                                } else {
-                                                    taskList.add(0, updatedTask)
-                                                }
-                                                saveTasks(taskList, nextId)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Checkbox(
+                                            checked = task.isCompleted,
+                                            onCheckedChange = { isChecked ->
+                                                handleCheckboxChange(task, isChecked)
                                             }
-                                        }
-                                    )
+                                        )
 
-                                    // Spacer to align with incomplete tasks (no drag handle for completed)
-                                    Spacer(modifier = Modifier.width(40.dp))
+                                        // Spacer to align with incomplete tasks (no drag handle for completed)
+                                        Spacer(modifier = Modifier.width(40.dp))
 
-                                    if (editingTaskId == task.id) {
-                                        var editedText by remember { mutableStateOf(task.text) }
-                                        OutlinedTextField(
-                                            value = editedText,
-                                            onValueChange = { editedText = it },
-                                            modifier = Modifier.weight(1f),
-                                            singleLine = true,
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedTextColor = Color.White,
-                                                unfocusedTextColor = Color.Gray,
-                                                cursorColor = Color.White,
-                                                focusedBorderColor = Color.White,
-                                                unfocusedBorderColor = Color.Gray
+                                        if (editingTaskId == task.id) {
+                                            var editedText by remember { mutableStateOf(task.text) }
+                                            OutlinedTextField(
+                                                value = editedText,
+                                                onValueChange = { editedText = it },
+                                                modifier = Modifier.weight(1f),
+                                                singleLine = true,
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedTextColor = Color.White,
+                                                    unfocusedTextColor = Color.Gray,
+                                                    cursorColor = Color.White,
+                                                    focusedBorderColor = Color.White,
+                                                    unfocusedBorderColor = Color.Gray
+                                                )
                                             )
-                                        )
-                                        IconButton(onClick = {
-                                            val index = taskList.indexOfFirst { it.id == task.id }
-                                            if (index != -1) {
-                                                taskList[index] = taskList[index].copy(text = editedText)
-                                                saveTasks(taskList, nextId)
-                                                editingTaskId = null // Exit edit mode
+                                            IconButton(onClick = {
+                                                val index = taskList.indexOfFirst { it.id == task.id }
+                                                if (index != -1) {
+                                                    taskList[index] = taskList[index].copy(text = editedText)
+                                                    saveTasks(taskList, nextId)
+                                                    editingTaskId = null
+                                                }
+                                            }) {
+                                                Icon(imageVector = Icons.Filled.Check, contentDescription = "Save edit", tint = Color.White)
                                             }
-                                        }) {
-                                            Icon(imageVector = Icons.Filled.Check, contentDescription = "Save edit", tint = Color.White)
-                                        }
-                                    } else {
-                                        Text(
-                                            text = task.text,
-                                            color = Color.White,
-                                            fontSize = 18.sp,
-                                            textDecoration = TextDecoration.LineThrough,
-                                            modifier = Modifier.weight(1f)
-                                        )
+                                        } else {
+                                            Text(
+                                                text = task.text,
+                                                color = Color.White,
+                                                fontSize = 18.sp,
+                                                textDecoration = TextDecoration.LineThrough,
+                                                modifier = Modifier.weight(1f)
+                                            )
 
-                                        IconButton(onClick = { editingTaskId = task.id }) {
+                                            IconButton(onClick = { editingTaskId = task.id }) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Edit,
+                                                    contentDescription = "Edit task",
+                                                    tint = Color.White
+                                                )
+                                            }
+                                        }
+
+                                        IconButton(
+                                            onClick = {
+                                                val currentIndex = taskList.indexOfFirst { it.id == task.id }
+                                                if (currentIndex != -1) {
+                                                    taskList.removeAt(currentIndex)
+                                                    saveTasks(taskList, nextId)
+                                                }
+                                            }
+                                        ) {
                                             Icon(
-                                                imageVector = Icons.Filled.Edit,
-                                                contentDescription = "Edit task",
+                                                imageVector = Icons.Filled.Delete,
+                                                contentDescription = "Delete task",
                                                 tint = Color.White
                                             )
                                         }
-                                    }
-
-
-                                    IconButton(
-                                        onClick = {
-                                            val currentIndex = taskList.indexOfFirst { it.id == task.id }
-                                            if (currentIndex != -1) {
-                                                taskList.removeAt(currentIndex)
-                                                saveTasks(taskList, nextId)
-                                            }
-                                        }
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Delete,
-                                            contentDescription = "Delete task",
-                                            tint = Color.White
-                                        )
                                     }
                                 }
                             }
