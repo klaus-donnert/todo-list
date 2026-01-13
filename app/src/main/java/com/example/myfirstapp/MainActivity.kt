@@ -26,7 +26,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -128,7 +128,7 @@ class MainActivity : ComponentActivity() {
             val (savedTasks, savedNextId) = loadTasks()
             val taskList = remember { mutableStateListOf<Task>().apply { addAll(savedTasks) } }
             var newTask: String by remember { mutableStateOf("") }
-            var nextId by remember { mutableStateOf(savedNextId) }
+            var nextId by remember { mutableIntStateOf(savedNextId) }
             var showAddTaskInput by remember { mutableStateOf(false) }
             var editingTaskId by remember { mutableStateOf<Int?>(null) }
 
@@ -458,7 +458,7 @@ class MainActivity : ComponentActivity() {
 
                         // Horizontal line between incomplete and completed tasks
                         item {
-                            Divider(
+                            HorizontalDivider(
                                 color = Color.Gray,
                                 thickness = 1.dp,
                                 modifier = Modifier
