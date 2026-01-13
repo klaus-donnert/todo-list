@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
@@ -32,6 +33,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -131,6 +133,7 @@ class MainActivity : ComponentActivity() {
             var nextId by remember { mutableIntStateOf(savedNextId) }
             var showAddTaskInput by remember { mutableStateOf(false) }
             var editingTaskId by remember { mutableStateOf<Int?>(null) }
+            var taskToDelete by remember { mutableStateOf<Task?>(null) }
 
             // Animation state: tracks tasks that are animating out (being checked/unchecked)
             // Maps task ID to the new isCompleted state it's transitioning to
@@ -165,6 +168,37 @@ class MainActivity : ComponentActivity() {
                     }
                     animatingTasks.removeAll { it.first == taskId }
                 }
+            }
+
+            // Delete confirmation dialog
+            if (taskToDelete != null) {
+                AlertDialog(
+                    onDismissRequest = { taskToDelete = null },
+                    title = { Text("Delete Task") },
+                    text = { Text("Are you sure you want to delete this task?") },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                val task = taskToDelete
+                                if (task != null) {
+                                    val currentIndex = taskList.indexOfFirst { it.id == task.id }
+                                    if (currentIndex != -1) {
+                                        taskList.removeAt(currentIndex)
+                                        saveTasks(taskList, nextId)
+                                    }
+                                }
+                                taskToDelete = null
+                            }
+                        ) {
+                            Text("Delete")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { taskToDelete = null }) {
+                            Text("Cancel")
+                        }
+                    }
+                )
             }
 
             Box(modifier = Modifier.fillMaxSize()) {
@@ -437,13 +471,7 @@ class MainActivity : ComponentActivity() {
                                         }
 
                                         IconButton(
-                                            onClick = {
-                                                val currentIndex = taskList.indexOfFirst { it.id == task.id }
-                                                if (currentIndex != -1) {
-                                                    taskList.removeAt(currentIndex)
-                                                    saveTasks(taskList, nextId)
-                                                }
-                                            }
+                                            onClick = { taskToDelete = task }
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Filled.Delete,
@@ -542,13 +570,7 @@ class MainActivity : ComponentActivity() {
                                         }
 
                                         IconButton(
-                                            onClick = {
-                                                val currentIndex = taskList.indexOfFirst { it.id == task.id }
-                                                if (currentIndex != -1) {
-                                                    taskList.removeAt(currentIndex)
-                                                    saveTasks(taskList, nextId)
-                                                }
-                                            }
+                                            onClick = { taskToDelete = task }
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Filled.Delete,
